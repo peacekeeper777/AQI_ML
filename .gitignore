@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Machine Learning model (stored in Docker Hub)
+models/aqi_model.pkl
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Node.js
+frontend/node_modules/
+frontend/dist/
+
+# IDE and system files
+.vscode/
+.DS_Store
+Thumbs.db
