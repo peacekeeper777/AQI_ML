@@ -37,15 +37,15 @@ const sampleReadings = {
   "PM2.5": "24.6", PM10: "48.2", NO: "8.1", NO2: "19.4", NOx: "22.7", NH3: "12.3",
   CO: "0.7", SO2: "7.8", O3: "31.5", Benzene: "1.2", Toluene: "4.8", Xylene: "0.6",
 };
-const currentDate = new Date();
-const localDate = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-${String(currentDate.getDate()).padStart(2, "0")}`;
+const minDate = "2015-01-01";
+const maxDate = "2020-07-01";
 
 function BrandMark() {
   return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M16 3.5 27 9.8v12.4L16 28.5 5 22.2V9.8L16 3.5Z" stroke="currentColor" strokeWidth="1.7"/><path d="M10.2 19.8c2.4-5.4 4.2-7.7 6.2-7.7 2.1 0 3.7 2.1 5.4 5.7M10.8 22c2.1-1.3 3.7-1.9 5.5-1.9 1.7 0 3.2.4 4.8 1.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg></span>;
 }
 
 function App() {
-  const [form, setForm] = useState({ City: "Delhi", Date: localDate, ...emptyReadings });
+  const [form, setForm] = useState({ City: "Delhi", Date: maxDate, ...emptyReadings });
   const [darkMode, setDarkMode] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -76,6 +76,7 @@ function App() {
     setError("");
     setLoading(true);
     const apiUrl = (import.meta.env.VITE_API_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
+    const invalidResponseMessage = "The server returned an invalid prediction response. Please try again.";
 
     try {
       const response = await fetch(`${apiUrl}/predict`, {
@@ -83,8 +84,30 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "The prediction could not be completed.");
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        if (response.ok) throw new Error(invalidResponseMessage);
+      }
+
+      if (!response.ok) {
+        const errorMessage = typeof data?.error === "string" && data.error.trim()
+          ? data.error
+          : "The prediction could not be completed.";
+        throw new Error(errorMessage);
+      }
+      if (
+        !data ||
+        typeof data !== "object" ||
+        typeof data.predicted_aqi !== "number" ||
+        !Number.isFinite(data.predicted_aqi) ||
+        typeof data.aqi_category !== "string" ||
+        !data.aqi_category.trim()
+      ) {
+        throw new Error(invalidResponseMessage);
+      }
+
       setResult(data);
       window.setTimeout(() => document.getElementById("results")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
     } catch (requestError) {
@@ -169,7 +192,7 @@ function App() {
               <div className="panel-heading"><div className="panel-icon location-icon" aria-hidden="true">⌖</div><div><span className="panel-step">STEP 01</span><h3 id="location-title">Set the scene</h3><p>Where and when were these readings taken?</p></div></div>
               <div className="location-fields">
                 <div className="field"><label htmlFor="city">City <span className="required-mark">*</span></label><div className="field-control city-control"><span className="input-icon" aria-hidden="true">⌖</span><select id="city" name="City" value={form.City} onChange={handleChange} required>{cities.map((city) => <option key={city} value={city}>{city}</option>)}</select></div></div>
-                <div className="field"><label htmlFor="date">Observation date <span className="required-mark">*</span></label><div className="field-control date-control"><span className="input-icon" aria-hidden="true">▦</span><input id="date" type="date" name="Date" value={form.Date} onChange={handleChange} required /></div></div>
+                <div className="field"><label htmlFor="date">Observation date <span className="required-mark">*</span></label><div className="field-control date-control"><span className="input-icon" aria-hidden="true">▦</span><input id="date" type="date" name="Date" value={form.Date} onChange={handleChange} min={minDate} max={maxDate} required /></div></div>
               </div>
             </section>
 

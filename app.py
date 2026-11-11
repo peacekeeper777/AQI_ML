@@ -25,6 +25,22 @@ pollutants = [
     "CO", "SO2", "O3", "Benzene", "Toluene", "Xylene"
 ]
 
+# Maximum pollutant readings in the model's training split.
+pollutant_max = {
+    "PM2.5": 914.94,
+    "PM10": 917.08,
+    "NO": 390.68,
+    "NO2": 362.21,
+    "NOx": 378.24,
+    "NH3": 352.89,
+    "CO": 175.81,
+    "SO2": 178.58,
+    "O3": 200.41,
+    "Benzene": 455.03,
+    "Toluene": 454.85,
+    "Xylene": 170.37
+}
+
 supported_cities = {
     name.replace("City_", "", 1)
     for name in feature_names if str(name).startswith("City_")
@@ -62,6 +78,11 @@ def predict():
     if pd.isna(date):
         return jsonify({"error": "Invalid date format"}), 400
 
+    if date.tzinfo is not None:
+        date = date.tz_localize(None)
+
+    date = date.normalize()
+
     if date < pd.Timestamp("2015-01-01") or date > pd.Timestamp("2020-07-01"):
         return jsonify({"error": "Date must be between 2015-01-01 and 2020-07-01"}), 400
 
@@ -85,6 +106,11 @@ def predict():
             if not np.isfinite(value) or value < 0:
                 return jsonify({"error": f"{p} must be a non-negative finite number"}), 400
 
+            if value > pollutant_max[p]:
+                return jsonify({
+                    "error": f"{p} must not exceed the maximum observed training value ({pollutant_max[p]})"
+                }), 400
+
             values[p] = value
             count += 1
 
@@ -105,11 +131,19 @@ def predict():
 
     x = (df - scaler_mean) / scaler_scale
 
-    predicted_aqi = reg_model.predict(x)[0]
-    predicted_category = class_model.predict(x)[0]
+    try:
+        predicted_aqi = float(reg_model.predict(x)[0])
+        predicted_category = class_model.predict(x)[0]
+    except (ValueError, TypeError, FloatingPointError, OverflowError):
+        app.logger.exception("Model prediction failed")
+        return jsonify({"error": "Unable to generate a prediction for these readings"}), 500
+
+    if not np.isfinite(predicted_aqi):
+        app.logger.error("Model returned a non-finite AQI prediction")
+        return jsonify({"error": "The model returned an invalid AQI prediction"}), 500
 
     return jsonify({
-        "predicted_aqi": round(float(predicted_aqi), 2),
+        "predicted_aqi": round(predicted_aqi, 2),
         "aqi_category": str(predicted_category)
     })
 
